@@ -255,6 +255,31 @@ def derive_path(master_priv: int, master_chain: bytes, path: str):
     return priv, chain
 
 
+def derive_first_addresses(mnemonic: str, account_path: str = "m/44'/60'/0'/0",
+                           count: int = 5, passphrase: str = ""):
+    """Derive the first ``count`` receiving addresses of a BIP44 account.
+
+    Enumerates account_path/0 .. account_path/(count-1) — the addresses a
+    wallet scans when looking for used funds. Returns [(path, address), ...].
+
+    >>> addrs = derive_first_addresses(TEST_MNEMONIC, count=2)
+    >>> [p for p, _ in addrs]
+    ["m/44'/60'/0'/0/0", "m/44'/60'/0'/0/1"]
+    >>> addrs[0][1].lower() == EXPECTED_ADDRESS
+    True
+    """
+    if count < 1:
+        raise ValueError("count must be >= 1")
+    seed = mnemonic_to_seed(mnemonic, passphrase)
+    priv, chain = master_key(seed)
+    out = []
+    for i in range(count):
+        path = f"{account_path}/{i}"
+        cpriv, _ = derive_path(priv, chain, path)
+        out.append((path, eth_address_from_privkey(cpriv)))
+    return out
+
+
 # ---------------------------------------------------------------------------
 # Demo / self-test
 # ---------------------------------------------------------------------------
@@ -274,6 +299,10 @@ def main():
                     help="derivation path (default: m/44'/60'/0'/0/0)")
     ap.add_argument("--generate", action="store_true",
                     help="generate a fresh random 12-word mnemonic instead")
+    ap.add_argument("--first", type=int, default=0, metavar="N",
+                    help="derive the first N receiving addresses of the "
+                         "account instead of a single address "
+                         "(uses the account part of --path)")
     args = ap.parse_args()
 
     mnemonic = generate_mnemonic() if args.generate else args.mnemonic
@@ -282,6 +311,13 @@ def main():
         raise SystemExit("ERROR: invalid mnemonic (word count, words, or checksum)")
     print("mnemonic OK (checksum valid)")
     print("mnemonic:", mnemonic)
+
+    if args.first:
+        account_path = args.path.rsplit("/", 1)[0]
+        for path, address in derive_first_addresses(
+                mnemonic, account_path, args.first):
+            print(f"{path} -> {address}")
+        return
 
     seed = mnemonic_to_seed(mnemonic)
     print("seed:", seed.hex()[:32] + "...")
